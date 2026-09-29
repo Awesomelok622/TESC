@@ -1,0 +1,2 @@
+import sanitizeHtml from 'sanitize-html';
+export const cleanHtml=(value:string)=>sanitizeHtml(value,{allowedTags:['p','br','h2','h3','h4','strong','em','s','ul','ol','li','blockquote','a','img'],allowedAttributes:{a:['href','target','rel'],img:['src','alt','width','height']},allowedSchemes:['https','mailto'],allowedSchemesByTag:{img:['https']},allowProtocolRelative:false,transformTags:{a:sanitizeHtml.simpleTransform('a',{rel:'noopener noreferrer'})}});

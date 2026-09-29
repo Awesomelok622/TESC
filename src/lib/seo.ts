@@ -1,0 +1,5 @@
+import type {Metadata} from 'next';
+import {locales,type Locale,type Entry,translation} from './domain';
+import {dict} from './i18n';
+export const origin=()=>process.env.NEXT_PUBLIC_SITE_URL||'https://tesc.org.hk';
+export function seo(locale:Locale,path='',title?:string,record?:Entry):Metadata{const site=origin();const name=title||`TESC｜${dict(locale).rights}`;const description=translation(record?.data.seo_description||record?.description,locale).text||dict(locale).ministryIntro;const image=record?.data.image_id?`${site}/api/media/${record.data.image_id}`:record?undefined:`${site}/og.png`;return {title:translation(record?.data.seo_title,locale).text||name,description,alternates:{canonical:`${site}/${locale}${path}`,languages:Object.fromEntries([...locales.map(l=>[l,`${site}/${l}${path}`]),['x-default',`${site}/zh-Hant${path}`]])},openGraph:{title:name,description,url:`${site}/${locale}${path}`,locale:locale==='en'?'en_US':locale==='zh-Hant'?'zh_HK':'zh_CN',type:record?.kind==='prayer'?'article':'website',images:image?[{url:image,alt:name}]:[]},twitter:{card:'summary_large_image',title:name,description,images:image?[image]:[]}};}

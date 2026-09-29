@@ -1,0 +1,7 @@
+import {jsonBody} from '@/lib/request';
+import {requireAdmin,sameOrigin,apiError,ApiError} from '@/lib/auth';
+import {z} from 'zod';
+import {i18nSchema} from '@/lib/domain';
+export async function GET(){try{const {db}=await requireAdmin();const {data,error}=await db.from('community_resources').select('*').is('deleted_at',null).order('created_at',{ascending:false});if(error)throw error;return Response.json(data);}catch(e){return apiError(e);}}
+export async function PATCH(req:Request){try{sameOrigin(req);const {db}=await requireAdmin();const parsed=z.object({id:z.uuid(),status:z.enum(['approved','rejected','hidden','pending']).optional(),published:z.boolean().optional(),title:i18nSchema.optional(),description:i18nSchema.optional(),category:z.string().max(100).optional()}).strict().safeParse(await jsonBody(req));if(!parsed.success)throw new ApiError(400,'資源資料不正確。');const {id,...update}=parsed.data;const {error}=await db.from('community_resources').update(update).eq('id',id);if(error)throw new ApiError(400,'未能更改。批准前必須完成檔案安全掃描。');return Response.json({ok:true});}catch(e){return apiError(e);}}
+export async function DELETE(req:Request){try{sameOrigin(req);const {db}=await requireAdmin();const {id}=await jsonBody(req);const {error}=await db.from('community_resources').update({deleted_at:new Date().toISOString(),status:'hidden',published:false}).eq('id',id);if(error)throw error;return Response.json({ok:true});}catch(e){return apiError(e);}}
