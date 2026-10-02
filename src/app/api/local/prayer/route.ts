@@ -1,0 +1,9 @@
+import {randomUUID} from 'node:crypto';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {dirname} from 'node:path';
+import {localIdentity} from '@/lib/local-auth';
+import {localDb,prayerFile} from '@/lib/local-db';
+import {validateFile} from '@/lib/domain';
+import {limitedForm} from '@/lib/security';
+import {sameOrigin} from '@/lib/auth';
+export async function POST(req:Request){const answer=(ok:boolean,message:string)=>req.headers.get('accept')==='application/json'?Response.json(ok?{ok:true}:{error:message},{status:ok?201:400}):Response.redirect(new URL(`/admin?message=${encodeURIComponent(message)}`,req.url),303);try{sameOrigin(req);const actor=await localIdentity();if(!actor||actor.role!=='super_admin')return answer(false,'沒有管理權限。');const max=250*1024*1024;const form=await limitedForm(req,max+16000);const file=form.get('file');if(!(file instanceof File))return answer(false,'請選擇 PDF。');const bytes=new Uint8Array(await file.arrayBuffer());validateFile(file.name,file.type,bytes,max);const title=String(form.get('title')||'').trim().slice(0,200),author=String(form.get('author')||''),date=String(form.get('published_at')||'');if(!title||!['暉牧','JOYCE LOK'].includes(author)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date)))return answer(false,'請檢查標題、作者及日期。');const id=randomUUID(),filename=`${id}.pdf`;await mkdir(dirname(prayerFile(filename)),{recursive:true});await writeFile(prayerFile(filename),bytes,{flag:'wx'});localDb().prepare('insert into prayer_letters(id,slug,author,title,published_at,filename,original_name,file_size,is_private,created_at) values(?,?,?,?,?,?,?,?,?,?)').run(id,`letter-${id}`,author,title,`${date}T00:00:00+08:00`,filename,file.name,file.size,0,new Date().toISOString());return answer(true,'代禱信已上載。');}catch{return answer(false,'上載失敗。請確認檔案格式和大小。');}}

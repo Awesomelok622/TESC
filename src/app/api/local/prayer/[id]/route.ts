@@ -1,0 +1,5 @@
+import {unlink} from 'node:fs/promises';
+import {localIdentity} from '@/lib/local-auth';
+import {localDb,localLetterById,prayerFile} from '@/lib/local-db';
+import {sameOrigin} from '@/lib/auth';
+export async function POST(req:Request,{params}:{params:Promise<{id:string}>}){const answer=(ok:boolean,message:string)=>req.headers.get('accept')==='application/json'?Response.json(ok?{ok:true}:{error:message},{status:ok?200:400}):Response.redirect(new URL(`/admin?message=${encodeURIComponent(message)}`,req.url),303);try{sameOrigin(req);const actor=await localIdentity();if(!actor||actor.role!=='super_admin')return answer(false,'沒有管理權限。');const {id}=await params,letter=localLetterById(id);if(!letter)return answer(false,'找不到代禱信。');const form=await req.formData();if(form.get('action')==='delete'){localDb().prepare('delete from prayer_letters where id=?').run(id);await unlink(prayerFile(letter.filename));return answer(true,'代禱信已移除。');}return answer(false,'未知操作。');}catch{return answer(false,'操作失敗。');}}

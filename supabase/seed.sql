@@ -7,7 +7,6 @@ insert into public.content_entries(kind,slug,title,description,body,data,status,
 ('person','fai','{"zh-Hant":"Fai","zh-Hans":"Fai","en":"Fai"}','{}','{}','{"person_group":"staff"}','draft',true,0),
 ('person','lok','{"zh-Hant":"Lok","zh-Hans":"Lok","en":"Lok"}','{}','{}','{"person_group":"staff"}','draft',true,1),
 ('person','yin','{"zh-Hant":"Yin","zh-Hans":"Yin","en":"Yin"}','{}','{}','{"person_group":"staff"}','draft',true,2),
-('person','joyce','{"zh-Hant":"Joyce","zh-Hans":"Joyce","en":"Joyce"}','{}','{}','{"person_group":"staff"}','draft',true,3),
 ('donation','default','{"zh-Hant":"[待輸入奉獻方式]","zh-Hans":"[待输入奉献方式]","en":"[Awaiting donation instructions]"}','{}','{}','{}','draft',true,0)
 on conflict(kind,slug) do nothing;
 insert into public.content_entries(kind,slug,title,description,data,is_demo,display_order)

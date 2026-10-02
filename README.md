@@ -2,7 +2,7 @@
 
 A self-hostable Next.js application for **Theological Education Service Corps Ltd. / 神學教育服務團**. Traditional Chinese is the default language; Simplified Chinese and English share the same application and records.
 
-This delivery contains working application code, reproducible SQL, a CMS, upload/moderation endpoints, automated tests, and Docker configuration. **No TESC Supabase project, NAS, Cloudflare account, DNS record, SMTP provider, or GitHub repository has been configured.** A credential-free local preview shows clearly identified placeholders. Authentication and public submissions fail closed until configured.
+This delivery contains a local SQLite backend for member accounts and public prayer letters, plus an optional Supabase CMS backend. The nine supplied 2026 prayer PDFs are seeded from `seed/prayer/` into application-managed storage on first start. They appear newest first by default, with an oldest-first option. Public submissions and contact delivery still need the configured Supabase/Turnstile services.
 
 ## Architecture
 
@@ -19,9 +19,9 @@ flowchart LR
   Next --> Mail[Optional email HTTP adapter]
 ```
 
-The public application uses anonymous database credentials and RLS. Admin requests authenticate the Supabase user server-side, read their role from `profiles`, and use that user's RLS-protected client. Service credentials are limited to server-only media handling, validated public submissions, rate limits, and email delivery bookkeeping. There is no public registration, search engine, payment processor, member paywall, Vercel service, or scheduler.
+Without Supabase keys, member registration and sign in use local SQLite, scrypt password hashing, HttpOnly session cookies, and six digit email verification codes sent through Resend. Set `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and `NEXT_PUBLIC_SITE_URL` to enable signup; codes expire after 10 minutes and unverified new members cannot sign in. `/admin` provides an administrator-only prayer letter upload portal and member list. With Supabase configured, the full CMS uses Supabase Auth, PostgreSQL RLS, and private storage; enable email confirmation, change the signup email template to display `{{ .Token }}`, and configure its SMTP service. The two backends have separate account and content stores, so choose one before publishing.
 
-**Stack:** Next.js App Router, React, TypeScript, Tailwind CSS 4 plus a custom editorial stylesheet, Tiptap rich text, Supabase SSR/Auth/PostgreSQL/Storage, Zod, sanitize-html, Lucide. Pinned dependency resolution lives in `pnpm-lock.yaml`. Node 22 and pnpm 11.25.0 are the reproducible toolchain; all application commands are ordinary package scripts compatible with `npm run`.
+**Stack:** Next.js App Router, React, TypeScript, SQLite (local mode), Supabase (optional full CMS mode), Zod, sanitize-html, and Lucide. Node 24 and pnpm 11.25.0 are the container toolchain.
 
 ## Local development
 
@@ -35,7 +35,7 @@ npm run dev
 
 PowerShell: use `Copy-Item .env.example .env.local` instead of `cp` if desired. On systems without npm in PATH, use `pnpm dev`, `pnpm build`, etc. No global Next.js installation is required.
 
-Open `http://localhost:3000/zh-Hant`. Without Supabase configuration the public site remains a read-only placeholder preview. It does not simulate successful uploads, authentication, or email delivery.
+Open `http://localhost:3000/zh-Hant/prayer`. Without Supabase configuration, anyone can read and download the nine supplied letters; `/signup`, `/login`, and the admin portal use local SQLite. Set the Resend variables above before registering members. The portal has separate Overview, Prayer Letters, Members, Website, and Account views, with Traditional Chinese, Simplified Chinese, and English navigation. Create the first local administrator with `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ characters), and `pnpm admin:create-local`. Set `NEXT_PUBLIC_SITE_URL` to the browser origin you actually use. `LOCAL_DATA_DIR` defaults to `./data` and must be backed up with its `prayer/` files.
 
 ```sh
 npm run typecheck
@@ -52,6 +52,7 @@ npm run start
 | Variable | Purpose | Secret? |
 |---|---|---|
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin, allowed form origin, auth callback origin; use `https://tesc.org.hk` in production | No |
+| `LOCAL_DATA_DIR` | Persistent SQLite database and prayer PDFs in local mode; defaults to `./data` | Private path |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | No |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public-safe anonymous API key; security depends on RLS | No |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only privileged key | **Yes** |
@@ -65,7 +66,7 @@ npm run start
 | `CONTACT_WEBHOOK_URL` / `CONTACT_WEBHOOK_TOKEN` | Email-provider adapter endpoint and bearer token | Token: **Yes** |
 | `MALWARE_SCAN_URL` / `MALWARE_SCAN_TOKEN` | Antivirus adapter endpoint and bearer token | Token: **Yes** |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Optional Compose tunnel container credential | **Yes** |
-| `ADMIN_EMAIL` / `ADMIN_DISPLAY_NAME` | One-time first administrator invitation | Remove after use |
+| `ADMIN_EMAIL` / `ADMIN_DISPLAY_NAME` / `ADMIN_PASSWORD` | One-time local administrator creation; Supabase invitation does not use `ADMIN_PASSWORD` | Remove after use |
 
 Generate `RATE_LIMIT_SECRET` with a password manager or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`, store it privately, and never commit `.env` files. Neither infrastructure secrets nor mail/scanner/tunnel credentials are editable in the CMS. Rebuild after changing the canonical domain because static `robots.txt` uses the build environment; alternatively provide `NEXT_PUBLIC_SITE_URL=https://tesc.org.hk` when building. The default is already `https://tesc.org.hk`.
 
@@ -79,9 +80,9 @@ Generate `RATE_LIMIT_SECRET` with a password manager or `node -e "console.log(re
    supabase db push
    ```
 
-   The checked-in migration is `supabase/migrations/202609280001_foundation.sql`. The local CLI defaults in `supabase/config.toml` disable signup; configure the hosted project separately. Alternatively apply this exact file with `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/202609280001_foundation.sql`. Do not manually reconstruct tables in the dashboard.
-3. Disable public signup in Supabase Auth. Set Site URL to `https://tesc.org.hk`; allow `https://tesc.org.hk/auth/confirm`. Add localhost only to a development project.
-4. Configure production SMTP and appropriate Auth rate limits. Configure invite/recovery email links to carry a token hash to the server:
+   Apply all four checked-in migrations in order. The third adds a member-only signup trigger; the fourth makes prayer letters public. Do not manually reconstruct tables in the dashboard.
+3. Enable email signup in Supabase Auth. Set Site URL to `https://tesc.org.hk`; allow `https://tesc.org.hk/auth/confirm`. Add localhost only to a development project.
+4. Configure production SMTP and appropriate Auth rate limits. For signup confirmation, edit the **Confirm signup** template so it displays the six digit `{{ .Token }}` value. Keep invite/recovery email links configured to carry a token hash to the server:
 
    Invite template link:
    `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite`
@@ -97,8 +98,8 @@ Generate `RATE_LIMIT_SECRET` with a password manager or `node -e "console.log(re
 
 | Table / view | Data and access |
 |---|---|
-| `profiles` | Auth user FK, `editor` / `super_admin`; own profile readable, role administration super-admin only |
-| `content_entries` | Unified typed CMS records, UUID, `(kind,slug)` unique, multilingual JSONB, rich text, type-specific `data`, publish time, ordering, soft deletion, attribution |
+| `profiles` | Auth user FK, `member` / `editor` / `super_admin`, last login timestamp; own profile readable, role administration super-admin only |
+| `content_entries` | Unified typed CMS records, UUID, `(kind,slug)` unique, multilingual JSONB, rich text, type-specific `data`, privacy flag, publish time, ordering, soft deletion, attribution |
 | `media_items` | Provider-neutral bucket/path, MIME/size, original sanitized name, scan status, creator |
 | `community_resources` | Submission, media FK, multilingual metadata, private contributor data, moderation/publication/scan status, approval attribution |
 | `public_resources` | Security-barrier view exposing **only** approved, published, clean, non-deleted records with no contributor email/name |
@@ -118,9 +119,13 @@ Editors can manage content, people, courses, prayer letters, project content, re
 - `public-resources`: private approved-document bucket available for future lifecycle moves, 20 MiB.
 - `admin-media`: private active upload bucket, PDF/image/MP4, up to 250 MiB.
 
-All uploads initially stay in `admin-media`, including approved resources. We intentionally keep approved objects private instead of copying them into a public bucket: hiding/unpublishing a record then revokes new download links. `/api/media/[id]` checks current visibility and issues a **60-second** signed URL. Already-issued signed links remain valid until expiry; existing browser downloads cannot be recalled. `?download=1` requests attachment disposition; the ordinary URL allows browser PDF viewing. No login is required for an approved public file.
+All uploads initially stay in `admin-media`, including approved resources. We intentionally keep approved objects private instead of copying them into a public bucket: hiding/unpublishing a record then revokes new download links. `/api/media/[id]` checks current visibility and issues a **60-second** signed URL. Already-issued signed links remain valid until expiry; existing browser downloads cannot be recalled. `?download=1` requests attachment disposition; the ordinary URL allows browser PDF viewing. Prayer letters and approved public files are accessible without login; private project files still require a member session.
 
-`src/lib/storage.ts` is the object-storage adapter. Public components reference media IDs through the application route. Replace this adapter for NAS/S3/R2, migrate object metadata, and update CSP hosts if needed. `src/lib/content.ts`, `supabase.ts`, and `auth.ts` isolate the database/auth integration. Supabase-compatible self-hosting primarily changes connection settings; another backend requires replacing those modules and porting SQL/RLS.
+`src/lib/storage.ts` selects Supabase Storage or private NAS filesystem storage (`STORAGE_DRIVER=filesystem`, mounted at `/data/uploads`). Public components reference media IDs through the application route. Replace this adapter for NAS/S3/R2, migrate object metadata, and update CSP hosts if needed. `src/lib/content.ts`, `supabase.ts`, and `auth.ts` isolate the database/auth integration. Supabase-compatible self-hosting primarily changes connection settings; another backend requires replacing those modules and porting SQL/RLS.
+
+## NAS deployment and regular members
+
+See [NAS_DEPLOYMENT.md](NAS_DEPLOYMENT.md) for the DS1621+ folder layout, Container Manager project, permissions, reverse proxy, SSL and verification steps. Prayer letters are public and can be sorted by date. Members can register for other restricted resources at /signup. /api/auth/session supports login, session inspection, and logout.
 
 ## Administrator creation and workflows
 
@@ -259,7 +264,7 @@ Provide final light/dark logos, favicon/social branding, mission/vision/values, 
 - Docker cannot be verified without a Docker engine and compatible NAS target.
 - Public submissions require moderation; the optional future auto-publish field is reserved but intentionally not active.
 - Large videos use buffered multipart upload; resumable uploads, background transcoding and automatic subtitle generation are not included.
-- No full archive/search, payment processing, site-wide search, public member accounts, revision-history editor or auto-translation is included.
+- No full archive/search, payment processing, site-wide search, revision-history editor or auto-translation is included.
 - Scheduling uses uncached database visibility checks, with database time authoritative. CDN caching changes must preserve this behavior.
 - Media writes and database writes span separate services. The application cleans up normal insertion failures; operational reconciliation is still needed for process termination/network failure between steps.
 - Supabase view/Storage/Auth behavior must be confirmed in staging in addition to local PostgreSQL tests.

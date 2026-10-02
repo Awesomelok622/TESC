@@ -1,18 +1,20 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
-const state=vi.hoisted(()=>({file:{id:'00000000-0000-4000-8000-000000000010',bucket:'admin-media',path:'file.pdf',mime_type:'application/pdf',original_name:'test.pdf',scan_status:'clean'},publicRows:[] as {id:string}[],entries:[] as {data:Record<string,string>}[],admin:false}));
+const state=vi.hoisted(()=>({file:{id:'00000000-0000-4000-8000-000000000010',bucket:'admin-media',path:'file.pdf',mime_type:'application/pdf',original_name:'test.pdf',scan_status:'clean'},publicRows:[] as {id:string}[],entries:[] as {data:Record<string,string>;is_private?:boolean}[],role:null as null|'member'|'editor'}));
 vi.mock('../src/lib/supabase',()=>({configured:()=>true,serviceDb:()=>({from:(table:string)=>{const query={select:()=>query,eq:()=>query,is:()=>query,lte:()=>query,limit:async()=>({data:state.publicRows}),single:async()=>({data:state.file}),then:(resolve:(value:unknown)=>unknown)=>Promise.resolve({data:table==='content_entries'?state.entries:[]}).then(resolve)};return query;}})}));
-vi.mock('../src/lib/auth',()=>({identity:async()=>state.admin?{id:'admin'}:null}));
+vi.mock('../src/lib/auth',()=>({identity:async()=>state.role?{id:'user',role:state.role}:null}));
 vi.mock('../src/lib/storage',()=>({storage:{signedUrl:vi.fn(async(_file,download?:string)=>`https://storage.example.test/file.pdf${download?'?download=test.pdf':''}`)}}));
 import {GET} from '../src/app/api/media/[id]/route';
 import {storage} from '../src/lib/storage';
 const id='00000000-0000-4000-8000-000000000010';
-beforeEach(()=>{state.publicRows=[];state.entries=[];state.admin=false;state.file.scan_status='clean';vi.clearAllMocks();});
+beforeEach(()=>{state.publicRows=[];state.entries=[];state.role=null;state.file.scan_status='clean';vi.clearAllMocks();});
 describe('file access handler',()=>{
  it('denies unapproved/unreferenced files to the public',async()=>expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(404));
  it('allows approved public PDF viewing without login',async()=>{state.publicRows=[{id:'resource'}];const res=await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})});expect(res.status).toBe(307);expect(res.headers.get('location')).toBe('https://storage.example.test/file.pdf');expect(res.headers.get('cache-control')).toBe('private, no-store');});
  it('supports explicit PDF download',async()=>{state.publicRows=[{id:'resource'}];const res=await GET(new Request('http://localhost/api/media/'+id+'?download=1'),{params:Promise.resolve({id})});expect(res.headers.get('location')).toContain('download=test.pdf');expect(storage.signedUrl).toHaveBeenCalledWith(state.file,'test.pdf');});
  it('never signs unscanned public files even with an eligible record',async()=>{state.publicRows=[{id:'resource'}];state.file.scan_status='pending';expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(404);expect(storage.signedUrl).not.toHaveBeenCalled();});
- it('permits admin preview of private files',async()=>{state.admin=true;state.file.scan_status='pending';expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(307);});
+ it('permits admin preview of private files',async()=>{state.role='editor';state.file.scan_status='pending';expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(307);});
+ it('blocks private PDF for visitors but permits members',async()=>{state.entries=[{data:{pdf_id:id},is_private:true}];expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(404);state.role='member';expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(307);});
+ it('does not grant members access to unrelated admin uploads',async()=>{state.role='member';expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(404);});
  it('permits clean media referenced by a public content entry',async()=>{state.entries=[{data:{image_id:id}}];expect((await GET(new Request('http://localhost/api/media/'+id),{params:Promise.resolve({id})})).status).toBe(307);});
  it('invalid identifiers return a friendly 404',async()=>{const res=await GET(new Request('http://localhost/api/media/bad'),{params:Promise.resolve({id:'bad'})});expect(res.status).toBe(404);expect(await res.text()).toContain('File unavailable');});
 });

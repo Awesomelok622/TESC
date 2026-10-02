@@ -7,15 +7,15 @@ export type I18n = z.infer<typeof i18nSchema>;
 export const i18n = (zh:string,en='[Awaiting official content]',hans='[待输入正式内容]'):I18n => ({'zh-Hant':zh,'zh-Hans':hans,en});
 export const placeholder = i18n('[待輸入正式內容]');
 export function translation(value:I18n|undefined, locale:Locale) {const language=[locale,...locales].find(l=>value?.[l]?.trim())||locale;return {text:value?.[language]?.trim()||'',fallback:language!==locale,language};}
-export const kinds=['page','person','ministry','video','course','course_category','project','project_section','project_document','prayer','resource_category','contact','donation','settings'] as const;
+export const kinds=['page','person','ministry','video','course','course_category','project','project_section','project_document','prayer','poster','resource_category','contact','donation','settings'] as const;
 export type Kind=typeof kinds[number];
-export type Role='editor'|'super_admin';
-export const canManage = (role:Role|undefined,kind:string) => !!role && (role==='super_admin'|| !['settings','roles'].includes(kind));
+export type Role='member'|'editor'|'super_admin';
+export const canManage = (role:Role|undefined,kind:string) => !!role && role!=='member' && (role==='super_admin'|| !['settings','roles','users'].includes(kind));
 const safeUrl=z.string().max(2000).refine(v=>!v || /^https:\/\/[^\s]+$/i.test(v), '請輸入 HTTPS 網址');
 export const dataSchema=z.object({
  role:i18nSchema.optional(), biography:i18nSchema.optional(), responsibilities:i18nSchema.optional(), quote:i18nSchema.optional(),
  subtitle:i18nSchema.optional(), objectives:i18nSchema.optional(), audience:i18nSchema.optional(), lecturer:i18nSchema.optional(), format:i18nSchema.optional(), duration:i18nSchema.optional(), credits:i18nSchema.optional(), notes:i18nSchema.optional(),
- category:z.string().max(100).optional(), author:z.enum(['暉牧','JOYCE LOK']).optional(), person_group:z.enum(['board','staff']).optional(),
+ category:z.string().max(100).optional(), project_status:z.enum(['ongoing','completed']).optional(), author:z.enum(['暉牧','JOYCE LOK']).optional(), person_group:z.enum(['board','staff']).optional(),
  source_type:z.enum(['upload','youtube','vimeo']).optional(), video_url:safeUrl.optional(),
  image_id:z.uuid().nullable().optional(), video_id:z.uuid().nullable().optional(), pdf_id:z.uuid().nullable().optional(), poster_id:z.uuid().nullable().optional(), logo_light_id:z.uuid().nullable().optional(), logo_dark_id:z.uuid().nullable().optional(), qr_id:z.uuid().nullable().optional(),
  related_ids:z.array(z.uuid()).max(100).optional(), parent_id:z.uuid().nullable().optional(),
@@ -26,7 +26,7 @@ export const dataSchema=z.object({
  timeline_date:z.string().max(100).optional(), statistic_value:z.string().max(100).optional(), archival_id:z.string().max(100).optional(),
  auto_publish_public_uploads:z.boolean().optional(),
 }).strict();
-export const entrySchema=z.object({id:z.uuid().optional(),kind:z.enum(kinds),slug:z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),title:i18nSchema,description:i18nSchema,body:i18nSchema,data:dataSchema.default({}),status:z.enum(['draft','published','archived']),published_at:z.iso.datetime({offset:true}).nullable(),display_order:z.number().int().min(0).max(100000),featured:z.boolean(),is_demo:z.boolean().default(false)});
+export const entrySchema=z.object({id:z.uuid().optional(),kind:z.enum(kinds),slug:z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),title:i18nSchema,description:i18nSchema,body:i18nSchema,data:dataSchema.default({}),status:z.enum(['draft','published','archived']),published_at:z.iso.datetime({offset:true}).nullable(),display_order:z.number().int().min(0).max(100000),featured:z.boolean(),is_demo:z.boolean().default(false),is_private:z.boolean().default(false)});
 export type Entry=z.infer<typeof entrySchema> & {id:string;created_at?:string;updated_at?:string;deleted_at?:string|null};
 export type Resource={id:string;title:I18n;description:I18n;category:string;media_id:string;file_size:number;mime_type:string;status:'pending'|'approved'|'rejected'|'hidden';published:boolean;scan_status:'pending'|'clean'|'infected'|'error';created_at:string;contributor_name?:string;contributor_email?:string;approved_at?:string};
 export type Media={id:string;original_name:string;path:string;bucket:string;mime_type:string;file_size:number;category:string;published:boolean;scan_status:string;created_at:string};

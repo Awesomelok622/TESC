@@ -3,7 +3,7 @@ import {entrySchema,kinds,videoEmbed} from '@/lib/domain';
 import {requireAdmin,sameOrigin,apiError,ApiError} from '@/lib/auth';
 import {cleanHtml} from '@/lib/sanitize';
 export async function GET(req:Request){try{const actor=await requireAdmin();const kind=new URL(req.url).searchParams.get('kind');if(!kinds.includes(kind as typeof kinds[number]))throw new ApiError(400,'未知內容類型。');const {data,error}=await actor.db.from('content_entries').select('*').eq('kind',kind).is('deleted_at',null).order('display_order');if(error)throw error;return Response.json(data);}catch(e){return apiError(e);}}
-export async function POST(req:Request){try{sameOrigin(req);if(Number(req.headers.get('content-length'))>500000)throw new ApiError(413,'內容過長。');const value=entrySchema.safeParse(await jsonBody(req));if(!value.success)throw new ApiError(400,'請檢查內容、網址及日期格式。');const p=value.data;const actor=await requireAdmin(p.kind);
+export async function POST(req:Request){try{sameOrigin(req);if(Number(req.headers.get('content-length'))>500000)throw new ApiError(413,'內容過長。');const value=entrySchema.safeParse(await jsonBody(req));if(!value.success)throw new ApiError(400,'請檢查內容、網址及日期格式。');const p=value.data;if(p.kind==='prayer')p.is_private=false;const actor=await requireAdmin(p.kind);
  if(p.kind==='video'&&p.data.source_type&&p.data.source_type!=='upload'&&!videoEmbed(p.data.source_type,p.data.video_url||''))throw new ApiError(400,'請使用有效的 YouTube 或 Vimeo 影片網址。');
  if(p.status==='published'&&!p.published_at)throw new ApiError(400,'請設定發佈時間。');
  if(p.status==='published'){

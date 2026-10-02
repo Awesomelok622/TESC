@@ -12,6 +12,7 @@
     "test": "vitest run --configLoader runner",
     "test:e2e": "playwright test",
     "admin:create": "node scripts/create-admin.mjs",
+    "admin:create-local": "node scripts/create-local-admin.mjs",
     "demo:resource": "node scripts/seed-resource.mjs",
     "demo:remove": "node scripts/remove-demo.mjs"
   },
